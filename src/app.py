@@ -187,20 +187,51 @@ def run_interactive_chat(provider):
 
 def run_react_agent(user_query: str, provider):
     """
-    🚧 CHƯA TRIỂN KHAI — đây là phần việc của Role 4 ở MỐC 3.
-
-    Kế hoạch lắp ráp ở Mốc 3:
-      1. Gửi REACT_SYSTEM_PROMPT (Role 3) + câu hỏi cho LLM.
-      2. Parse chuỗi 'Thought:' / 'Action: tên_tool[tham_số]' từ output của LLM.
-      3. Tra tên tool trong AVAILABLE_TOOLS (Role 2) rồi thực thi, lấy Observation.
-      4. Nối Observation vào lịch sử hội thoại, lặp lại tối đa MAX_ITERATIONS lần.
-      5. Dừng khi gặp 'Final Answer:' hoặc kích hoạt Guardrail khi chạm MAX_ITERATIONS.
+    Dựng vòng lặp ReAct Agent (Thought -> Action -> Observation) có Guardrails.
     """
     print(f"\n🤖 [REACT AGENT] Câu hỏi: {user_query}")
-    print("🚧 Vòng lặp ReAct chưa được lắp — sẽ hoàn thiện ở Mốc 3.")
-    print(f"🛠️ Tool đã sẵn sàng từ Role 2: {', '.join(AVAILABLE_TOOLS.keys())}")
-    print(f"🛡️ Guardrail đã sẵn sàng từ Role 3: MAX_ITERATIONS = {MAX_ITERATIONS}")
-    print(f"📏 Độ dài REACT_SYSTEM_PROMPT: {len(REACT_SYSTEM_PROMPT)} ký tự")
+    step = 0
+    history = f"Câu hỏi của người dùng: {user_query}"
+    
+    while step < MAX_ITERATIONS:
+        step += 1
+        print(f"\n--- 🔄 Vòng lặp ReAct (Step {step}/{MAX_ITERATIONS}) ---")
+        
+        # Gọi LLM Provider thực hiện suy luận ReAct
+        response = provider.generate(history, system_prompt=REACT_SYSTEM_PROMPT)
+        print(response)
+        
+        # Nếu LLM đưa ra Final Answer thì hoàn tất
+        if "Final Answer:" in response:
+            break
+            
+        # Tìm và thực thi Action nếu có
+        if "Action:" in response:
+            action_line = [line for line in response.split("\n") if "Action:" in line][0]
+            action_str = action_line.replace("Action:", "").strip()
+            
+            if "[" in action_str and "]" in action_str:
+                tool_name = action_str.split("[")[0].strip()
+                params_raw = action_str.split("[")[1].split("]")[0].strip()
+                params = [p.strip().strip("'\"") for p in params_raw.split(",") if p.strip()]
+                
+                if tool_name in AVAILABLE_TOOLS:
+                    try:
+                        obs = AVAILABLE_TOOLS[tool_name](*params)
+                    except Exception as e:
+                        obs = f"LỖI THỰC THI TOOL '{tool_name}': {str(e)}"
+                else:
+                    obs = f"LỖI: Không tìm thấy công cụ '{tool_name}' trong hệ thống."
+            else:
+                obs = "LỖI: Định dạng Action không đúng quy tắc tên_công_cụ[tham_số]."
+                
+            print(f"👁️ Observation: {obs}")
+            history += f"\n{response}\nObservation: {obs}"
+        else:
+            history += f"\n{response}"
+            
+    if step >= MAX_ITERATIONS and "Final Answer:" not in history:
+        print(f"\n🛡️ GUARDRAIL TRIGGERED: Đã đạt giới hạn tối đa {MAX_ITERATIONS} bước. Ngắt lặp an toàn!")
 
 
 # =============================================================================

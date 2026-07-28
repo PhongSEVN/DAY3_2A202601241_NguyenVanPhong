@@ -30,7 +30,7 @@
 
 ---
 
-### 🧠 ReAct Agent:
+### 🧠 ReAct Agent
 
 * **Thought 1**: Cần tìm thông tin vị trí AI Engineer để xác định tiêu chí tuyển dụng.
 * **Action 1**: `search_jobs["AI Engineer"]`
