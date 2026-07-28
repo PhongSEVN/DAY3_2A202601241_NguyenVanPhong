@@ -23,6 +23,13 @@ Cách chạy:
 
 import json
 import os
+import sys
+
+if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
 import re
 import sys
 import time
@@ -283,7 +290,7 @@ def list_tools():
 
 
 @app.get("/api/test-cases")
-def test_cases():
+def get_test_cases():
     """Bộ test case của Role 1 — bấm 1 phát là chạy thẳng, khỏi gõ tay khi demo."""
     path = os.path.join(BASE_DIR, "config", "test_cases.json")
     try:

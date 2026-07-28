@@ -157,9 +157,11 @@ class MockProvider(BaseLLMProvider):
     # ------------------------------------------------------------------
     def _mock_react(self, scratchpad: str) -> str:
         question = ""
-        m = re.search(r"Question:\s*(.+)", scratchpad)
+        m = re.search(r"(?:Question|Câu hỏi của người dùng|Câu hỏi):\s*(.+)", scratchpad, re.I)
         if m:
             question = m.group(1).strip()
+        else:
+            question = scratchpad.strip().split("\n")[0].strip()
         q = question.lower()
 
         observations = re.findall(r"Observation:\s*(.+)", scratchpad)
@@ -212,21 +214,30 @@ class MockProvider(BaseLLMProvider):
             return ("Thought: Tôi đã có dữ liệu thật từ công cụ, đủ để trả lời.\n"
                     f"Final Answer: Dựa trên dữ liệu tra cứu được: {last_obs[:400]}")
 
-        # 6. Mặc định: tra cứu vị trí tuyển dụng thật
+        # 6. Mặc định: tra cứu vị trí tuyển dụng thật từ câu hỏi
         keyword, location = self._extract_job_query(question)
         return (f"Thought: Tôi cần tra cứu dữ liệu tuyển dụng thật trước khi kết luận.\n"
                 f'Action: search_jobs["{keyword}", "{location}"]')
 
     @staticmethod
     def _extract_job_query(question: str):
-        """Bóc (từ khoá ngành nghề, địa điểm) từ câu hỏi tiếng Việt kiểu 'vị trí X tại Y'."""
-        keyword, location = "AI Engineer", ""
-        m = re.search(r"(?:vị trí|việc|tuyển)\s+(.+?)(?:\s+tại\s+(.+?))?\s*(?:[.,?]|$)", question, re.I)
+        """Bóc (từ khoá ngành nghề, địa điểm) từ câu hỏi tiếng Việt."""
+        keyword, location = "", ""
+        m = re.search(r"(?:vị trí|việc|tuyển|người)\s+(.+?)(?:\s+tại\s+(.+?))?\s*(?:[.,?]|$)", question, re.I)
         if m:
-            keyword = m.group(1).strip() or keyword
+            keyword = m.group(1).strip()
             location = (m.group(2) or "").strip()
-        # Bỏ đuôi câu hỏi tiếng Việt để từ khoá tra cứu sạch (VD: "AI Engineer không" ➔ "AI Engineer")
+        else:
+            keyword = question.strip()
+
+        # Làm sạch các từ thừa trong câu hỏi tiếng Việt
+        keyword = re.sub(r"^(tìm|tìm cho mình|tìm cho tôi|cho mình|cho tôi|cần|5|10|\d+)\s+", "", keyword, flags=re.I).strip()
+        keyword = re.sub(r"^(vị trí|người)\s+", "", keyword, flags=re.I).strip()
         keyword = re.sub(r"\s+(không|nào|ạ|nhé|cho tôi|giúp tôi)$", "", keyword, flags=re.I).strip()
+
+        if not keyword:
+            keyword = "AI Engineer"
+
         return keyword, location
 
 
