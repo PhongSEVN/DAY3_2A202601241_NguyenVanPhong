@@ -70,11 +70,12 @@ def _allow_cors(response):
 # 🧩 GHÉP SYSTEM PROMPT THẬT CHO REACT AGENT
 # =============================================================================
 
-# `prompts.py` của Role 3 hiện vẫn liệt kê tool mẫu (get_weather / search_flights).
-# Nếu bê nguyên xuống Agent thì Agent sẽ gọi toàn tool không tồn tại. Ở đây ta thay
-# đúng khối danh sách tool bằng mô tả sinh tự động từ TOOL_SPECS của Role 2.
-# 👉 Khi Role 3 cập nhật prompts.py để tự gọi get_tools_description(), đoạn vá này
-#    trở thành no-op (regex không khớp thì giữ nguyên prompt gốc).
+# Lưới an toàn: nếu REACT_SYSTEM_PROMPT phát cho Agent một danh sách tool KHÔNG khớp
+# với AVAILABLE_TOOLS (như hồi prompt còn boilerplate get_weather / search_flights) thì
+# Agent sẽ gọi toàn tool không tồn tại. Thiếu tool nào thì chèn mô tả sinh tự động từ
+# TOOL_SPECS của Role 2.
+# 👉 Từ khi Role 3 liệt kê đủ 4 tool thật trong prompts.py, nhánh vá KHÔNG chạy nữa —
+#    prompt của Role 3 được dùng nguyên vẹn, tránh phát trùng danh sách tool 2 lần.
 _TOOL_LIST_BLOCK = re.compile(
     r"Danh sách các công cụ bạn có thể sử dụng:.*?(?=\n\s*QUY TẮC BẮT BUỘC)",
     re.DOTALL,
@@ -82,13 +83,17 @@ _TOOL_LIST_BLOCK = re.compile(
 
 
 def build_react_prompt() -> str:
-    """Trả về System Prompt ReAct đã gắn danh sách tool thật + ngày hiện tại."""
-    real_block = "Danh sách các công cụ bạn có thể sử dụng:\n" + get_tools_description()
+    """Trả về System Prompt ReAct (đảm bảo đủ tool thật) + bối cảnh ngày hiện tại."""
+    missing = [name for name in AVAILABLE_TOOLS if name not in REACT_SYSTEM_PROMPT]
 
-    if _TOOL_LIST_BLOCK.search(REACT_SYSTEM_PROMPT):
-        prompt = _TOOL_LIST_BLOCK.sub(lambda _m: real_block, REACT_SYSTEM_PROMPT)
+    if not missing:
+        prompt = REACT_SYSTEM_PROMPT.rstrip()
     else:
-        prompt = REACT_SYSTEM_PROMPT.rstrip() + "\n\n" + real_block
+        real_block = "Danh sách các công cụ bạn có thể sử dụng:\n" + get_tools_description()
+        if _TOOL_LIST_BLOCK.search(REACT_SYSTEM_PROMPT):
+            prompt = _TOOL_LIST_BLOCK.sub(lambda _m: real_block, REACT_SYSTEM_PROMPT)
+        else:
+            prompt = REACT_SYSTEM_PROMPT.rstrip() + "\n\n" + real_block
 
     today = time.strftime("%d/%m/%Y")
     return (
