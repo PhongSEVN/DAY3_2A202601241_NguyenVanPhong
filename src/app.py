@@ -39,7 +39,7 @@ load_dotenv()
 #   1  → cần nhiều bước + dữ liệu thật  ➔ Chatbot không tra cứu được
 #   2  → vị trí không tồn tại           ➔ Chatbot dễ bịa Job Description (ảo giác)
 #   13 → cần Observation trước kết luận ➔ Chatbot kết luận vội khi chưa có dữ liệu
-DEMO_CASE_IDS = [1, 2, 13]
+DEMO_CASE_IDS = [1, 2, 3, 4, 5, 6]
 
 SEPARATOR = "=" * 70
 

@@ -16,7 +16,6 @@
 
 ---
 
-
 ## 🔍 2. SO SÁNH PHẢN HỒI (TEST CASE #3)
 
 **Câu hỏi**: *"Tôi có phù hợp với vị trí AI Engineer không?"*
@@ -48,3 +47,135 @@
   *"Ứng viên đạt mức độ phù hợp 92% với vị trí AI Engineer. Hệ thống đã đặt lịch phỏng vấn thành công vào 09:00 ngày 05/08/2026."*
 * **Nhận xét**:
   ReAct Agent giải quyết đầy đủ yêu cầu bằng cách suy luận theo nhiều bước và sử dụng các công cụ (`search_jobs`, `screen_resume`, `schedule_interview`). Kết quả có căn cứ từ dữ liệu thu được ở từng bước, giúp hỗ trợ quy trình tuyển dụng chính xác và hiệu quả hơn Chatbot Baseline.
+
+
+🔄 3. REACT TRACE
+
+## 🧪 TEST CASE #1 — Đơn giản
+
+**Câu hỏi:**
+
+*Tìm 5 vị trí tuyển dụng phù hợp cho "Lập trình viên Python" tại Hà Nội.*
+
+### 🧠 Thought 1
+
+Người dùng muốn tìm danh sách việc làm cho vị trí **Lập trình viên Python** tại **Hà Nội**. Cần sử dụng công cụ tìm kiếm việc làm để lấy dữ liệu từ hệ thống.
+
+### 🛠️ Action 1
+
+```text
+search_jobs(
+    keyword="Lập trình viên Python",
+    location="Hà Nội"
+)
+```
+
+### 👁️ Observation 1
+
+```text
+Đã tìm thấy 5 vị trí tuyển dụng phù hợp trong VietJobs.csv.
+```
+
+### 🏁 Final Answer
+
+Hiển thị danh sách 5 vị trí tuyển dụng Python tại Hà Nội lấy từ cơ sở dữ liệu VietJobs.csv.
+
+---
+
+## 🧪 TEST CASE #2 — Đơn giản
+
+**Câu hỏi:**
+
+*Đặt lịch phỏng vấn cho ứng viên Nguyễn Văn An vào lúc 05/08/2026 14:30.*
+
+### 🧠 Thought 1
+
+Người dùng yêu cầu đặt lịch phỏng vấn. Cần gọi công cụ đặt lịch với tên ứng viên và thời gian đã cung cấp.
+
+### 🛠️ Action 1
+
+```text
+schedule_interview(
+    candidate="Nguyễn Văn An",
+    datetime="05/08/2026 14:30"
+)
+```
+
+### 👁️ Observation 1
+
+```text
+Đặt lịch phỏng vấn thành công.
+Ứng viên: Nguyễn Văn An
+Thời gian: 05/08/2026 14:30
+```
+
+### 🏁 Final Answer
+
+Đã đặt lịch phỏng vấn thành công cho ứng viên Nguyễn Văn An vào lúc 14:30 ngày 05/08/2026.
+
+---
+
+## 🧪 TEST CASE #3 — Multi-step
+
+**Câu hỏi:**
+
+*Tìm các vị trí tuyển dụng cho "Kế toán" ở TP. HCM, sau đó đặt lịch phỏng vấn cho ứng viên Trần Thị Bình vào 10/08/2026 09:00.*
+
+### 🧠 Thought 1
+
+Yêu cầu đầu tiên là tìm các vị trí tuyển dụng phù hợp cho "Kế toán" tại TP. HCM. Cần lấy dữ liệu từ hệ thống tuyển dụng trước.
+
+### 🛠️ Action 1
+
+```text
+search_jobs(
+    keyword="Kế toán",
+    location="TP. HCM"
+)
+```
+
+### 👁️ Observation 1
+
+```text
+Đã tìm thấy các vị trí tuyển dụng Kế toán tại TP. HCM trong VietJobs.csv.
+```
+
+---
+
+### 🧠 Thought 2
+
+Đã có danh sách công việc. Tiếp tục thực hiện yêu cầu thứ hai là đặt lịch phỏng vấn cho ứng viên Trần Thị Bình.
+
+### 🛠️ Action 2
+
+```text
+schedule_interview(
+    candidate="Trần Thị Bình",
+    datetime="10/08/2026 09:00"
+)
+```
+
+### 👁️ Observation 2
+
+```text
+Đặt lịch phỏng vấn thành công.
+Ứng viên: Trần Thị Bình
+Thời gian: 10/08/2026 09:00
+```
+
+### 🏁 Final Answer
+
+Đã tìm thấy các vị trí tuyển dụng phù hợp cho "Kế toán" tại TP. HCM và đặt lịch phỏng vấn thành công cho ứng viên Trần Thị Bình vào lúc 09:00 ngày 10/08/2026.
+
+---
+
+# 📋 Đánh giá của Role 5
+
+- Agent tuân thủ đúng quy trình **Thought → Action → Observation → Final Answer**.
+- Các Tool được sử dụng đúng chức năng:
+  - `search_jobs` để tra cứu dữ liệu tuyển dụng.
+  - `schedule_interview` để tạo lịch phỏng vấn.
+- Với bài toán nhiều bước (Test Case #3), Agent hoàn thành tuần tự từng nhiệm vụ thay vì trả lời ngay.
+- Final Answer chỉ được đưa ra sau khi có đầy đủ Observation từ các Tool.
+- Agent không tự tạo dữ liệu (không bị hallucination) mà dựa trên kết quả trả về từ hệ thống.
+- Quy trình suy luận rõ ràng, phù hợp với mô hình ReAct Agent.
