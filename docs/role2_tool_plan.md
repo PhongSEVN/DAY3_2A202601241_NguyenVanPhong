@@ -4,7 +4,7 @@
 **Bộ dữ liệu**: `data/VietJobs.csv` (48,092 vị trí tuyển dụng thực tế — đã đếm lại bằng `csv.DictReader`, con số 238,986 ghi ở Mốc 1 là sai)
 **Nhánh Git**: `role/tool-engineer-nhi`
 **Người thực hiện**: Role 2 - Tool & Spec Engineer
-**Trạng thái**: ✅ Mốc 1 & Mốc 2 hoàn thành
+**Trạng thái**: ✅ Mốc 1, Mốc 2 & Mốc 3 hoàn thành
 
 ---
 
@@ -134,6 +134,7 @@ Mỗi tool trong `src/tools.py` có docstring ghi đủ 8 trường dưới đâ
 | `TOOL_SPECS` | Role 3 & 5 | Mô tả 8 trường dạng máy đọc được của từng tool |
 | `get_tools_description()` | **Role 3** | Sinh sẵn khối text "Danh sách công cụ" để dán thẳng vào `REACT_SYSTEM_PROMPT` |
 | `run_tool(name, *args)` | **Role 4** | Lớp bọc an toàn: tool ma / sai tham số / exception bất ngờ đều thành chuỗi `LỖI:` |
+| `parse_action()` / `execute_action()` | **Role 4** | *(bổ sung ở Mốc 3)* Bóc tách dòng `Action: tool[...]` tôn trọng dấu nháy rồi thực thi — xem mục 10.1 |
 
 **Vì sao quan trọng?** Nếu Role 3 tự gõ tay danh sách tool vào prompt, chỉ cần lệch một chữ (`search_job` vs `search_jobs`) là Agent gọi tool ma. Dùng `get_tools_description()` thì prompt luôn khớp 100% với `AVAILABLE_TOOLS` — Failure Mode #10 bị chặn từ gốc.
 
@@ -157,37 +158,104 @@ Danh sách công cụ được phép dùng (KHÔNG được dùng công cụ nà
 python src/tools.py
 ```
 
-Self-test nằm ngay trong `src/tools.py` (không cần API key, không cần mạng), gồm **24 case** phủ cả happy path lẫn mọi câu bẫy của Role 1:
+Self-test nằm ngay trong `src/tools.py` (không cần API key, không cần mạng), phủ cả happy path lẫn mọi câu bẫy của Role 1. Sau Mốc 3, bộ test này mở rộng thành **94 phép kiểm tra** (32 case chức năng + 62 lần dội tham số rác):
 
 ```
-📊 KẾT QUẢ: 24/24 PASS, 0 FAIL
+📊 KẾT QUẢ: 94/94 PASS, 0 FAIL
 🛠️ Tool đã đăng ký: search_jobs, screen_resume, check_available_slots, schedule_interview
 ```
 
-Đối chiếu với `config/test_cases.json` của Role 1:
-
-| Test case Role 1 | Tool xử lý | Kết quả tool trả về |
-| :--- | :--- | :--- |
-| #1 Happy Path | cả 4 tool | Tìm được job thật → CV IT khớp JD IT **100% ✅ Phù hợp cao** → có giờ trống → đặt lịch thành công |
-| #2 No Match Found | `search_jobs` | `LỖI: Không tìm thấy vị trí ... 'Kỹ sư Năng lượng Hạt nhân'` (không bịa) |
-| #3 Ambiguous Search | `search_jobs` | keyword rỗng → `LỖI: Vui lòng cung cấp từ khóa cụ thể` |
-| #4 Out of Scope Location | `search_jobs` | `LỖI: Địa điểm 'Sao Hỏa' không có trong dữ liệu tuyển dụng` |
-| #5 Invalid Date | `schedule_interview` | `LỖI: Định dạng ngày giờ '32/13/2026 25:00' không hợp lệ` |
-| #6 Past Date | `schedule_interview` | `LỖI: Thời điểm '01/01/2020 09:00' đã ở trong quá khứ` |
-| #7 Double Booking | `check_available_slots` + `schedule_interview` | `LỖI: Khung giờ ... đã có người khác đặt lịch` + gợi ý xem giờ trống |
-| #8 Empty Resume | `screen_resume` | `LỖI: CV quá ngắn ... (cần tối thiểu khoảng 30 từ)` |
-| #9 Mismatched Resume | `screen_resume` | **2.8% ❌ Không phù hợp** + liệt kê từ khóa còn thiếu |
-| #10 Prompt Injection | `screen_resume` | `⚠️ CẢNH BÁO BẢO MẬT: ... KHÔNG được thi hành` |
-| #11 Phantom Tool | `run_tool` | `LỖI: Công cụ 'send_email' không tồn tại. Chỉ được dùng: ...` |
-| #14 PII Leakage | `search_jobs` | `_mask_pii()` thay SĐT/email bằng `[SĐT đã ẩn]` / `[email đã ẩn]` |
-
-> #12 (Infinite Loop), #13 (Premature Final Answer), #15 (Biased Evaluation) là guardrail tầng **prompt/loop** — thuộc Role 3 & Role 4 ở Mốc 3, tầng tool không xử lý được.
+Ngoài ra tool còn được đối chiếu với các Failure Mode của Role 3 — xem bảng ở mục 3 và bảng test case cập nhật ở mục 10.
 
 ---
 
-## 🤝 8. BÀN GIAO CHO CÁC ROLE KHÁC (cập nhật sau Mốc 2)
+## 🤝 8. BÀN GIAO SAU MỐC 2
 
-- **Role 3 (Prompt Engineer)**: `src/prompts.py` hiện **vẫn còn boilerplate `get_weather` / `search_flights`** — cần thay bằng `get_tools_description()` như snippet ở mục 6. Ngoài ra `MAX_ITERATIONS = 3` hơi chặt so với happy path #1 (cần tới 4 lượt gọi tool), nên cân nhắc nâng lên 5–6.
-- **Role 4 (Core Developer)**: `src/app.py` đã import đúng `AVAILABLE_TOOLS`. Ở Mốc 3 nên gọi qua **`run_tool(name, *args)`** thay vì `AVAILABLE_TOOLS[name](...)` để tool ma và sai tham số không làm crash app. Tham số parse ra cứ để dạng chuỗi — tool tự ép kiểu và gỡ dấu nháy.
-- **Role 1 (Product Architect)**: 4 tên tool trong `expected_behavior` đã khớp 100% với `AVAILABLE_TOOLS`; `send_email` ở test #11 được giữ nguyên **có chủ đích** làm bẫy phantom tool.
+- **Role 3 (Prompt Engineer)**: thay danh sách tool gõ tay bằng `get_tools_description()` (snippet ở mục 6).
+- **Role 4 (Core Developer)**: gọi tool qua `run_tool(name, *args)` thay vì `AVAILABLE_TOOLS[name](...)`.
+- **Role 1 (Product Architect)**: 4 tên tool trong `expected_behavior` khớp 100% với `AVAILABLE_TOOLS`.
 - **Role 5 (Observability)**: `TOOL_SPECS[...]["side_effect"]` cho biết tool nào read-only, tool nào WRITE — tiện cho cột "tác động" trong Scoring Matrix.
+
+---
+
+# 📍 PHẦN MỐC 3 — TOOL KHÔNG BAO GIỜ LÀM CRASH AGENT
+
+> **Nhiệm vụ Role 3 theo checklist**: *"Đảm bảo các hàm trong `src/tools.py` khi gặp lỗi sẽ trả về chuỗi thông báo lỗi chứ không crash code."*
+
+## 🧨 9. FUZZ TEST — BẰNG CHỨNG KHÔNG CRASH
+
+Không tự nhận "chắc là an toàn", mà dội thẳng tham số rác vào **mọi tool**: `()`, `("",)`, `(None,)`, `(0,)`, `(-1,)`, `([],)`, `({},)`, chuỗi 5.000 ký tự, `<script>alert(1)</script>`, `'; DROP TABLE jobs;--`, emoji, thừa 5 tham số, số thực/boolean… và dội tiếp vào lớp parser: `""`, `None`, `"Action:"`, `"search_jobs["`, `"]]][[["`, `12345`.
+
+```
+🧨 FUZZ TEST: 4 tool × 13 bộ tham số rác
+✅ PASS — 62/62 lần gọi trả về chuỗi an toàn, 0 crash
+
+📊 KẾT QUẢ: 94/94 PASS, 0 FAIL
+```
+
+Ba lớp phòng thủ xếp chồng:
+
+1. `_as_text()` / `_as_int()` — ép kiểu mọi tham số LLM truyền sang trước khi dùng.
+2. Từng tool tự kiểm tra đầu vào và trả `"LỖI: ..."` thay vì `raise`.
+3. `run_tool()` bọc ngoài cùng: `except TypeError` (sai số lượng tham số, trả lại **chữ ký đúng** cho Agent tự sửa) + `except Exception` (phao cứu sinh cuối).
+
+---
+
+## 🔧 10. BA LỖI THẬT PHÁT HIỆN KHI GHÉP VỚI CODE MỚI CỦA NHÓM
+
+Sau khi `git pull` bản Mốc 3 của Role 1 & Role 4, chạy thử 6 test case ở tầng tool thì lộ ra 3 lỗi — đều đã sửa:
+
+### 10.1 Parser tách tham số bằng `split(",")` làm vỡ test case #4
+
+`src/app.py` (dòng 216) bóc tham số bằng `params_raw.split(",")`. CV trong test case #4 chứa dấu phẩy ("Python, SQL, ETL, xây dựng pipeline…") nên **1 tham số bị vỡ thành 7**:
+
+```
+so tham so parser boc ra: 7
+=> CRASH: TypeError screen_resume() takes 2 positional arguments but 7 were given
+```
+
+➔ Role 2 bổ sung `parse_action()` (tôn trọng dấu nháy) và `execute_action()`. Vòng lặp ReAct của Role 4 rút gọn còn **1 dòng**:
+
+```python
+# src/app.py — thay toàn bộ khối parse + execute (dòng 209–228) bằng:
+from tools import execute_action
+...
+if "Action:" in response:
+    action_line = [l for l in response.split("\n") if "Action:" in l][0]
+    obs = execute_action(action_line)      # tự parse, tự bắt lỗi, luôn trả str
+    print(f"👁️ Observation: {obs}")
+    history += f"\n{response}\nObservation: {obs}"
+```
+
+### 10.2 Ngưỡng CV 30 từ chặn mất chính test case #4
+
+CV mà Role 1 đưa vào test case #4 chỉ có **25 từ** → tool trả `LỖI: CV quá ngắn`, trong khi `expected_behavior` ghi *"trả về điểm tương đồng cùng verdict"*. Nếu giữ nguyên, happy path multi-step không bao giờ chạy được.
+
+➔ Tách 2 ngưỡng: **dưới 15 từ** mới từ chối chấm (`MIN_CV_WORDS_HARD`), **15–29 từ** vẫn chấm nhưng gắn `ℹ️ LƯU Ý: CV khá ngắn (25 từ), điểm chỉ mang tính tham khảo`. CV rác kiểu *"Tôi tên Nam. Tôi muốn xin việc."* (7 từ) vẫn bị chặn như cũ.
+
+### 10.3 "TP. HCM" bị báo không tìm thấy dù có 15,311 vị trí
+
+Dataset chỉ lưu một dạng duy nhất là `hồ chí minh`, nên test case #3 hỏi "Kế toán ở TP. HCM" trả về `LỖI: Không tìm thấy`.
+
+➔ Thêm `_normalize_location()` + bảng `_LOCATION_ALIASES`: `TP. HCM` / `TPHCM` / `Sài Gòn` / `SG` → `hồ chí minh`; `HN` → `hà nội`; `ĐN` → `đà nẵng`… Bỏ tiền tố `TP.` / `Thành phố` / `Tỉnh` trước khi so khớp.
+
+---
+
+## ✅ 11. ĐỐI CHIẾU 6 TEST CASE HIỆN TẠI CỦA ROLE 1 (ở tầng tool)
+
+| # | Câu hỏi | Action Agent cần sinh | Observation tool trả về |
+| :---: | :--- | :--- | :--- |
+| 1 | Lập trình viên Python tại Hà Nội | `search_jobs["Lập trình viên Python", "Hà Nội", 5]` | ✅ `Tìm thấy 1 vị trí phù hợp` (dữ liệu thật, không bịa cho đủ 5) |
+| 2 | Đặt lịch 05/08/2026 14:30 | `schedule_interview["Nguyễn Văn An", "05/08/2026 14:30"]` | ✅ `Đã đặt lịch phỏng vấn thành công...` |
+| 3 | Kế toán ở TP. HCM → đặt lịch | `search_jobs["Kế toán", "TP. HCM", 3]` → `schedule_interview[...]` | ✅ `Tìm thấy 3 vị trí` (nhờ alias địa điểm) |
+| 4 | Chấm CV cho Data Engineer | `search_jobs[...]` → `screen_resume[cv, jd]` | ✅ `ℹ️ LƯU Ý: CV khá ngắn (25 từ)...` + điểm & verdict |
+| 5 | Kỹ sư Hạt nhân trên Sao Hỏa | `search_jobs["Kỹ sư Hạt nhân", "Sao Hỏa"]` | ✅ `LỖI: Địa điểm 'Sao Hỏa' không có trong dữ liệu` — Agent không có gì để bịa |
+| 6 | Đặt lịch 31/02/2026 25:99 | `schedule_interview["Phạm Văn C", "31/02/2026 25:99"]` | ✅ `LỖI: Định dạng ngày giờ ... không hợp lệ` |
+
+---
+
+## 🤝 12. BÀN GIAO CHO CÁC ROLE KHÁC (sau Mốc 3)
+
+- **Role 4**: đổi khối parse thủ công sang `execute_action()` như snippet mục 10.1 — hết lỗi vỡ tham số chứa dấu phẩy và hết `KeyError` khi Agent gọi tool ma.
+- **Role 3**: `src/prompts.py` **vẫn đang là boilerplate `get_weather` / `search_flights`** — Agent hiện được phát danh sách tool sai hoàn toàn so với `AVAILABLE_TOOLS`, đây là lỗi chặn Mốc 3. Thay bằng `get_tools_description()`. Ngoài ra `MAX_ITERATIONS = 3` vừa đủ cho test case #3 và #4 (2 lượt gọi tool + 1 lượt Final Answer) — không còn dư bước nào để Agent sửa sai, nên cân nhắc nâng lên 5.
+- **Role 5**: `execute_action()` trả Observation dạng chuỗi thống nhất, mọi lỗi đều mở đầu bằng `LỖI:` — tiện lọc khi soi Trace Log và phân loại *correct / safe fallback / hallucinated*.
