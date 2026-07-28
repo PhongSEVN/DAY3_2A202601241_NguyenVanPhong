@@ -1,0 +1,41 @@
+flowchart TD
+
+    A([Người dùng nhập câu hỏi])
+
+    A --> B{Đánh giá độ phức tạp của câu hỏi}
+
+    B -->|Câu hỏi đơn giản| C[Chatbot Baseline]
+
+    C --> D[LLM trả lời trực tiếp]
+
+    D --> E([Hiển thị kết quả])
+
+    B -->|Câu hỏi cần nhiều bước hoặc cần dữ liệu thực tế| F[ReAct Agent]
+
+    F --> G[Thought]
+
+    G --> H[Action]
+
+    H --> I[Gọi Tool]
+
+    I --> J{Loại Tool}
+
+    J --> K[search_jobs]
+
+    J --> L[screen_resume]
+
+    J --> M[schedule_interview]
+
+    K --> N[Observation]
+
+    L --> N
+
+    M --> N
+
+    N --> O{Đã đủ thông tin?}
+
+    O -->|Chưa| G
+
+    O -->|Đủ| P[Final Answer]
+
+    P --> E

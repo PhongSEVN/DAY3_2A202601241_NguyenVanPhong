@@ -179,3 +179,121 @@ Thời gian: 10/08/2026 09:00
 - Final Answer chỉ được đưa ra sau khi có đầy đủ Observation từ các Tool.
 - Agent không tự tạo dữ liệu (không bị hallucination) mà dựa trên kết quả trả về từ hệ thống.
 - Quy trình suy luận rõ ràng, phù hợp với mô hình ReAct Agent.
+
+
+
+
+# 🔀 4. HYBRID FLOW
+
+Hệ thống được thiết kế theo mô hình **Hybrid AI**, kết hợp giữa **Chatbot Baseline** và **ReAct Agent** nhằm tối ưu tốc độ phản hồi, độ chính xác và khả năng xử lý các tác vụ phức tạp.
+
+---
+
+## 🤖 Luồng 1: Chatbot Baseline
+
+### Mục đích
+
+Sử dụng cho các câu hỏi đơn giản, không yêu cầu truy cập dữ liệu thực tế hoặc thực hiện nhiều bước xử lý.
+
+### Các trường hợp áp dụng
+
+- Giải thích khái niệm tuyển dụng hoặc phỏng vấn.
+- Tư vấn cách viết CV hoặc chuẩn bị phỏng vấn.
+- Trả lời câu hỏi kiến thức chung.
+- Hướng dẫn quy trình tuyển dụng.
+- Các yêu cầu chỉ cần một lần phản hồi từ mô hình ngôn ngữ.
+
+### Luồng xử lý
+
+```
+Người dùng
+      │
+      ▼
+Đánh giá yêu cầu
+      │
+      ▼
+Chatbot Baseline
+      │
+      ▼
+LLM tạo phản hồi trực tiếp
+      │
+      ▼
+Trả kết quả cho người dùng
+```
+
+### Đặc điểm
+
+- Phản hồi nhanh.
+- Không cần sử dụng Tool.
+- Phù hợp với các yêu cầu đơn giản.
+- Tiết kiệm tài nguyên và thời gian xử lý.
+
+---
+
+## 🧠 Luồng 2: ReAct Agent
+
+### Mục đích
+
+Sử dụng cho các yêu cầu cần suy luận nhiều bước hoặc cần truy cập dữ liệu từ hệ thống.
+
+### Các trường hợp áp dụng
+
+- Tìm kiếm việc làm theo vị trí và địa điểm.
+- Đánh giá mức độ phù hợp của CV.
+- Đặt lịch phỏng vấn.
+- Kết hợp nhiều tác vụ trong cùng một yêu cầu.
+- Các bài toán yêu cầu sử dụng Tool để đưa ra kết quả chính xác.
+
+### Luồng xử lý
+
+```
+Người dùng
+      │
+      ▼
+Phân tích yêu cầu
+      │
+      ▼
+Thought
+      │
+      ▼
+Action
+      │
+      ▼
+Tool
+(search_jobs /
+screen_resume /
+schedule_interview)
+      │
+      ▼
+Observation
+      │
+      ▼
+Đã đủ thông tin?
+ ┌───────────────┐
+ │               │
+ │ Chưa          │ Có
+ ▼               ▼
+Thought tiếp   Final Answer
+theo             │
+                 ▼
+        Trả kết quả cho người dùng
+```
+
+### Đặc điểm
+
+- Có khả năng suy luận theo nhiều bước.
+- Sử dụng Tool để truy cập dữ liệu thực tế.
+- Hạn chế hiện tượng trả lời sai hoặc tự suy diễn.
+- Có Guardrail và giới hạn `MAX_ITERATIONS` để tránh vòng lặp vô hạn.
+- Đưa ra kết quả dựa trên Observation thay vì phỏng đoán.
+
+---
+
+# 📊 Kết luận
+
+Mô hình Hybrid giúp hệ thống tận dụng ưu điểm của cả hai phương pháp:
+
+- **Chatbot Baseline** đảm nhiệm các câu hỏi đơn giản, giúp phản hồi nhanh và tiết kiệm tài nguyên.
+- **ReAct Agent** xử lý các yêu cầu phức tạp bằng cách suy luận theo quy trình **Thought → Action → Observation → Final Answer**, kết hợp với các Tool như `search_jobs`, `screen_resume` và `schedule_interview` để đưa ra kết quả chính xác và đáng tin cậy.
+
+Nhờ cơ chế phân luồng này, hệ thống vừa đảm bảo hiệu năng đối với các tác vụ thông thường, vừa đáp ứng hiệu quả các bài toán tuyển dụng yêu cầu xử lý nhiều bước và sử dụng dữ liệu thực tế.
