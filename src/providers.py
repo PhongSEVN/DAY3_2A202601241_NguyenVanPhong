@@ -4,6 +4,7 @@ Hỗ trợ chuyển đổi linh hoạt giữa các nhà cung cấp AI chỉ bằ
 """
 
 import os
+import re
 import sys
 import json
 import requests
@@ -132,12 +133,101 @@ class OpenRouterProvider(BaseLLMProvider):
 
 
 class MockProvider(BaseLLMProvider):
-    """Offline Mock Provider (Cho bài test không cần kết nối API)"""
+    """
+    Offline Mock Provider (Cho bài test không cần kết nối API).
+
+    Mô phỏng LLM theo 2 chế độ, tự nhận biết qua system_prompt:
+      - Chế độ Baseline : trả lời chung chung như một Chatbot không có Tool.
+      - Chế độ ReAct    : sinh đúng cú pháp 'Thought/Action/Final Answer' theo đề tài
+                          Tuyển dụng để nhóm demo được vòng lặp và Guardrail khi offline.
+    """
+
     def generate(self, prompt: str, system_prompt: str = "") -> str:
-        text = prompt.lower()
-        if "thời tiết" in text and "hà nội" in text:
-            return "Thought: Cần tra cứu thời tiết Hà Nội.\nAction: get_weather['Hà Nội']"
-        return "🤖 [Mock Provider]: Phản hồi giả lập offline cho bài test."
+        is_react = "Action:" in (system_prompt or "") or "ReAct" in (system_prompt or "")
+        if not is_react:
+            return (
+                "🤖 [Mock Baseline]: Mình chưa có công cụ tra cứu dữ liệu tuyển dụng thật, "
+                "nên chỉ có thể trả lời chung chung dựa trên kiến thức có sẵn. "
+                "Bạn nên kiểm tra lại thông tin trên các trang tuyển dụng chính thống."
+            )
+        return self._mock_react(prompt)
+
+    # ------------------------------------------------------------------
+    # Mô phỏng ReAct: quyết định bước tiếp theo dựa trên scratchpad hiện tại
+    # ------------------------------------------------------------------
+    def _mock_react(self, scratchpad: str) -> str:
+        question = ""
+        m = re.search(r"Question:\s*(.+)", scratchpad)
+        if m:
+            question = m.group(1).strip()
+        q = question.lower()
+
+        observations = re.findall(r"Observation:\s*(.+)", scratchpad)
+        last_obs = observations[-1] if observations else ""
+        turn = len(observations)  # 0 = lượt đầu tiên, chưa có Observation nào
+
+        # 1. Câu hỏi mơ hồ / phân biệt đối xử / lộ PII ➔ chốt luôn, không gọi tool
+        if any(k in q for k in ("nam dưới", "ứng viên nam", "dưới 25 tuổi")):
+            return ("Thought: Yêu cầu này mang tính phân biệt đối xử, tôi không được thực hiện.\n"
+                    "Final Answer: Xin lỗi, tôi không thể sàng lọc theo giới tính hay độ tuổi. "
+                    "Việc đánh giá chỉ dựa trên kỹ năng, kinh nghiệm và yêu cầu công việc.")
+        if any(k in q for k in ("số điện thoại", "địa chỉ của ứng viên")):
+            return ("Thought: Đây là thông tin cá nhân (PII), tôi không được tiết lộ.\n"
+                    "Final Answer: Tôi không thể cung cấp số điện thoại hay địa chỉ của ứng viên "
+                    "vì đây là thông tin cá nhân được bảo vệ.")
+        if q.strip() in ("tìm việc cho tôi.", "tìm việc cho tôi"):
+            return ("Thought: Câu hỏi thiếu thông tin, tôi không nên đoán bừa.\n"
+                    "Final Answer: Bạn vui lòng cho mình biết thêm: ngành nghề/vị trí mong muốn "
+                    "và địa điểm làm việc để mình tra cứu chính xác nhé.")
+
+        # 2. Câu bẫy Phantom Tool: cố tình gọi tool không tồn tại để lộ Guardrail
+        if "email" in q and turn == 0:
+            return ("Thought: Người dùng muốn gửi email xác nhận, tôi thử dùng công cụ gửi email.\n"
+                    'Action: send_email["ung.vien@example.com", "Xác nhận lịch phỏng vấn"]')
+
+        # 3. Câu bẫy Infinite Loop: lặp đi lặp lại đúng một Action
+        if "liên tục" in q:
+            return ("Thought: Người dùng yêu cầu tìm liên tục cho tới khi có kết quả.\n"
+                    'Action: search_jobs["AI Engineer", "Hà Nội"]')
+
+        # 4. Đặt lịch phỏng vấn (chỉ khi người dùng KHÔNG yêu cầu tra cứu vị trí trước)
+        if "đặt lịch" in q and "tìm" not in q and turn == 0:
+            slot = "32/13/2026 25:00" if "32/13/2026" in q else "01/01/2020 09:00"
+            return (f"Thought: Người dùng muốn đặt lịch phỏng vấn, tôi thử gọi công cụ đặt lịch.\n"
+                    f'Action: schedule_interview["Ứng viên", "{slot}"]')
+
+        # 5. Sau khi đã có Observation ➔ suy luận tiếp hoặc kết luận (không bịa dữ liệu)
+        if turn >= 1:
+            if last_obs.startswith("LỖI"):
+                return ("Thought: Công cụ báo lỗi, tôi không được bịa dữ liệu mà phải báo lại người dùng.\n"
+                        f"Final Answer: Rất tiếc, tôi chưa thực hiện được yêu cầu. Lý do: {last_obs} "
+                        "Bạn vui lòng cung cấp lại thông tin hợp lệ giúp mình nhé.")
+
+            # Multi-step: đã có Job Description ➔ chấm CV trước khi kết luận
+            if "cv" in q and "Action: screen_resume" not in scratchpad:
+                jd = last_obs.replace('"', "'")[:200]
+                return ("Thought: Đã có yêu cầu công việc thật, giờ tôi chấm độ phù hợp của CV ứng viên.\n"
+                        f'Action: screen_resume["", "{jd}"]')
+
+            return ("Thought: Tôi đã có dữ liệu thật từ công cụ, đủ để trả lời.\n"
+                    f"Final Answer: Dựa trên dữ liệu tra cứu được: {last_obs[:400]}")
+
+        # 6. Mặc định: tra cứu vị trí tuyển dụng thật
+        keyword, location = self._extract_job_query(question)
+        return (f"Thought: Tôi cần tra cứu dữ liệu tuyển dụng thật trước khi kết luận.\n"
+                f'Action: search_jobs["{keyword}", "{location}"]')
+
+    @staticmethod
+    def _extract_job_query(question: str):
+        """Bóc (từ khoá ngành nghề, địa điểm) từ câu hỏi tiếng Việt kiểu 'vị trí X tại Y'."""
+        keyword, location = "AI Engineer", ""
+        m = re.search(r"(?:vị trí|việc|tuyển)\s+(.+?)(?:\s+tại\s+(.+?))?\s*(?:[.,?]|$)", question, re.I)
+        if m:
+            keyword = m.group(1).strip() or keyword
+            location = (m.group(2) or "").strip()
+        # Bỏ đuôi câu hỏi tiếng Việt để từ khoá tra cứu sạch (VD: "AI Engineer không" ➔ "AI Engineer")
+        keyword = re.sub(r"\s+(không|nào|ạ|nhé|cho tôi|giúp tôi)$", "", keyword, flags=re.I).strip()
+        return keyword, location
 
 
 def get_llm_provider(provider_name: str = None) -> BaseLLMProvider:
