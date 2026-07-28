@@ -63,6 +63,7 @@
 - [X] **Role 1**: Kiểm tra xem Agent có vượt qua được câu bẫy (Edge Case) bằng phanh Guardrail hay không.
 - [X] 🔄 **Đồng bộ Git Mốc 3**: Cả nhóm lưu file, đẩy code lên Git: `git add .` ➔ `git commit -m "Moc 3: ReAct Agent Loop & Safeguards"` ➔ `git push`.
 
+
 ---
 
 ### 📍 MỐC 4: Tương tác liên nhóm & Hybrid Flowchart (40 phút)
