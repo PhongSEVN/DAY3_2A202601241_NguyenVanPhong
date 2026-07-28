@@ -16,11 +16,12 @@
 
 ---
 
+
 ## 🔍 2. SO SÁNH PHẢN HỒI (TEST CASE #3)
 
 **Câu hỏi**: *"Tôi có phù hợp với vị trí AI Engineer không?"*
 
-### 🤖 Chatbot Baseline
+### 🤖 Chatbot Baseline:
 
 * **Phản hồi**:
   *"[Gemini Error]: Chưa cấu hình GEMINI_API_KEY trong file .env!"*
