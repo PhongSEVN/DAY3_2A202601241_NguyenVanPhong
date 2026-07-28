@@ -16,7 +16,6 @@
 
 ---
 
-
 ## 🔍 2. SO SÁNH PHẢN HỒI (TEST CASE #3)
 
 **Câu hỏi**: *"Tôi có phù hợp với vị trí AI Engineer không?"*
@@ -48,3 +47,253 @@
   *"Ứng viên đạt mức độ phù hợp 92% với vị trí AI Engineer. Hệ thống đã đặt lịch phỏng vấn thành công vào 09:00 ngày 05/08/2026."*
 * **Nhận xét**:
   ReAct Agent giải quyết đầy đủ yêu cầu bằng cách suy luận theo nhiều bước và sử dụng các công cụ (`search_jobs`, `screen_resume`, `schedule_interview`). Kết quả có căn cứ từ dữ liệu thu được ở từng bước, giúp hỗ trợ quy trình tuyển dụng chính xác và hiệu quả hơn Chatbot Baseline.
+
+
+🔄 3. REACT TRACE
+
+## 🧪 TEST CASE #1 — Đơn giản
+
+**Câu hỏi:**
+
+*Tìm 5 vị trí tuyển dụng phù hợp cho "Lập trình viên Python" tại Hà Nội.*
+
+### 🧠 Thought 1
+
+Người dùng muốn tìm danh sách việc làm cho vị trí **Lập trình viên Python** tại **Hà Nội**. Cần sử dụng công cụ tìm kiếm việc làm để lấy dữ liệu từ hệ thống.
+
+### 🛠️ Action 1
+
+```text
+search_jobs(
+    keyword="Lập trình viên Python",
+    location="Hà Nội"
+)
+```
+
+### 👁️ Observation 1
+
+```text
+Đã tìm thấy 5 vị trí tuyển dụng phù hợp trong VietJobs.csv.
+```
+
+### 🏁 Final Answer
+
+Hiển thị danh sách 5 vị trí tuyển dụng Python tại Hà Nội lấy từ cơ sở dữ liệu VietJobs.csv.
+
+---
+
+## 🧪 TEST CASE #2 — Đơn giản
+
+**Câu hỏi:**
+
+*Đặt lịch phỏng vấn cho ứng viên Nguyễn Văn An vào lúc 05/08/2026 14:30.*
+
+### 🧠 Thought 1
+
+Người dùng yêu cầu đặt lịch phỏng vấn. Cần gọi công cụ đặt lịch với tên ứng viên và thời gian đã cung cấp.
+
+### 🛠️ Action 1
+
+```text
+schedule_interview(
+    candidate="Nguyễn Văn An",
+    datetime="05/08/2026 14:30"
+)
+```
+
+### 👁️ Observation 1
+
+```text
+Đặt lịch phỏng vấn thành công.
+Ứng viên: Nguyễn Văn An
+Thời gian: 05/08/2026 14:30
+```
+
+### 🏁 Final Answer
+
+Đã đặt lịch phỏng vấn thành công cho ứng viên Nguyễn Văn An vào lúc 14:30 ngày 05/08/2026.
+
+---
+
+## 🧪 TEST CASE #3 — Multi-step
+
+**Câu hỏi:**
+
+*Tìm các vị trí tuyển dụng cho "Kế toán" ở TP. HCM, sau đó đặt lịch phỏng vấn cho ứng viên Trần Thị Bình vào 10/08/2026 09:00.*
+
+### 🧠 Thought 1
+
+Yêu cầu đầu tiên là tìm các vị trí tuyển dụng phù hợp cho "Kế toán" tại TP. HCM. Cần lấy dữ liệu từ hệ thống tuyển dụng trước.
+
+### 🛠️ Action 1
+
+```text
+search_jobs(
+    keyword="Kế toán",
+    location="TP. HCM"
+)
+```
+
+### 👁️ Observation 1
+
+```text
+Đã tìm thấy các vị trí tuyển dụng Kế toán tại TP. HCM trong VietJobs.csv.
+```
+
+---
+
+### 🧠 Thought 2
+
+Đã có danh sách công việc. Tiếp tục thực hiện yêu cầu thứ hai là đặt lịch phỏng vấn cho ứng viên Trần Thị Bình.
+
+### 🛠️ Action 2
+
+```text
+schedule_interview(
+    candidate="Trần Thị Bình",
+    datetime="10/08/2026 09:00"
+)
+```
+
+### 👁️ Observation 2
+
+```text
+Đặt lịch phỏng vấn thành công.
+Ứng viên: Trần Thị Bình
+Thời gian: 10/08/2026 09:00
+```
+
+### 🏁 Final Answer
+
+Đã tìm thấy các vị trí tuyển dụng phù hợp cho "Kế toán" tại TP. HCM và đặt lịch phỏng vấn thành công cho ứng viên Trần Thị Bình vào lúc 09:00 ngày 10/08/2026.
+
+---
+
+# 📋 Đánh giá 
+
+- Agent tuân thủ đúng quy trình **Thought → Action → Observation → Final Answer**.
+- Các Tool được sử dụng đúng chức năng:
+  - `search_jobs` để tra cứu dữ liệu tuyển dụng.
+  - `schedule_interview` để tạo lịch phỏng vấn.
+- Với bài toán nhiều bước (Test Case #3), Agent hoàn thành tuần tự từng nhiệm vụ thay vì trả lời ngay.
+- Final Answer chỉ được đưa ra sau khi có đầy đủ Observation từ các Tool.
+- Agent không tự tạo dữ liệu (không bị hallucination) mà dựa trên kết quả trả về từ hệ thống.
+- Quy trình suy luận rõ ràng, phù hợp với mô hình ReAct Agent.
+
+
+
+
+# 🔀 4. HYBRID FLOW
+
+Hệ thống được thiết kế theo mô hình **Hybrid AI**, kết hợp giữa **Chatbot Baseline** và **ReAct Agent** nhằm tối ưu tốc độ phản hồi, độ chính xác và khả năng xử lý các tác vụ phức tạp.
+
+---
+
+## 🤖 Luồng 1: Chatbot Baseline
+
+### Mục đích
+
+Sử dụng cho các câu hỏi đơn giản, không yêu cầu truy cập dữ liệu thực tế hoặc thực hiện nhiều bước xử lý.
+
+### Các trường hợp áp dụng
+
+- Giải thích khái niệm tuyển dụng hoặc phỏng vấn.
+- Tư vấn cách viết CV hoặc chuẩn bị phỏng vấn.
+- Trả lời câu hỏi kiến thức chung.
+- Hướng dẫn quy trình tuyển dụng.
+- Các yêu cầu chỉ cần một lần phản hồi từ mô hình ngôn ngữ.
+
+### Luồng xử lý
+
+```
+Người dùng
+      │
+      ▼
+Đánh giá yêu cầu
+      │
+      ▼
+Chatbot Baseline
+      │
+      ▼
+LLM tạo phản hồi trực tiếp
+      │
+      ▼
+Trả kết quả cho người dùng
+```
+
+### Đặc điểm
+
+- Phản hồi nhanh.
+- Không cần sử dụng Tool.
+- Phù hợp với các yêu cầu đơn giản.
+- Tiết kiệm tài nguyên và thời gian xử lý.
+
+---
+
+## 🧠 Luồng 2: ReAct Agent
+
+### Mục đích
+
+Sử dụng cho các yêu cầu cần suy luận nhiều bước hoặc cần truy cập dữ liệu từ hệ thống.
+
+### Các trường hợp áp dụng
+
+- Tìm kiếm việc làm theo vị trí và địa điểm.
+- Đánh giá mức độ phù hợp của CV.
+- Đặt lịch phỏng vấn.
+- Kết hợp nhiều tác vụ trong cùng một yêu cầu.
+- Các bài toán yêu cầu sử dụng Tool để đưa ra kết quả chính xác.
+
+### Luồng xử lý
+
+```
+Người dùng
+      │
+      ▼
+Phân tích yêu cầu
+      │
+      ▼
+Thought
+      │
+      ▼
+Action
+      │
+      ▼
+Tool
+(search_jobs /
+screen_resume /
+schedule_interview)
+      │
+      ▼
+Observation
+      │
+      ▼
+Đã đủ thông tin?
+ ┌───────────────┐
+ │               │
+ │ Chưa          │ Có
+ ▼               ▼
+Thought tiếp   Final Answer
+theo             │
+                 ▼
+        Trả kết quả cho người dùng
+```
+
+### Đặc điểm
+
+- Có khả năng suy luận theo nhiều bước.
+- Sử dụng Tool để truy cập dữ liệu thực tế.
+- Hạn chế hiện tượng trả lời sai hoặc tự suy diễn.
+- Có Guardrail và giới hạn `MAX_ITERATIONS` để tránh vòng lặp vô hạn.
+- Đưa ra kết quả dựa trên Observation thay vì phỏng đoán.
+
+---
+
+# 📊 Kết luận
+
+Mô hình Hybrid giúp hệ thống tận dụng ưu điểm của cả hai phương pháp:
+
+- **Chatbot Baseline** đảm nhiệm các câu hỏi đơn giản, giúp phản hồi nhanh và tiết kiệm tài nguyên.
+- **ReAct Agent** xử lý các yêu cầu phức tạp bằng cách suy luận theo quy trình **Thought → Action → Observation → Final Answer**, kết hợp với các Tool như `search_jobs`, `screen_resume` và `schedule_interview` để đưa ra kết quả chính xác và đáng tin cậy.
+
+Nhờ cơ chế phân luồng này, hệ thống vừa đảm bảo hiệu năng đối với các tác vụ thông thường, vừa đáp ứng hiệu quả các bài toán tuyển dụng yêu cầu xử lý nhiều bước và sử dụng dữ liệu thực tế.
