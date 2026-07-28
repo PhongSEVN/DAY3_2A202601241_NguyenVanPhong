@@ -169,7 +169,7 @@ Thời gian: 10/08/2026 09:00
 
 ---
 
-# 📋 Đánh giá của Role 5
+# 📋 Đánh giá 
 
 - Agent tuân thủ đúng quy trình **Thought → Action → Observation → Final Answer**.
 - Các Tool được sử dụng đúng chức năng:
