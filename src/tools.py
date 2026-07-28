@@ -36,6 +36,12 @@ _LOCATION_INDEX = None
 _BOOKED_SLOTS = set()
 _SEEDED = False
 
+# Ngưỡng độ dài CV (Mốc 3): dưới HARD thì từ chối chấm, giữa HARD và RELIABLE thì
+# vẫn chấm nhưng gắn cảnh báo. Tách 2 ngưỡng vì CV trong test case #4 của Role 1 chỉ
+# có 25 từ — nếu chặn cứng ở 30 từ thì happy path multi-step không bao giờ chạy được.
+MIN_CV_WORDS_HARD = 15
+MIN_CV_WORDS_RELIABLE = 30
+
 # Khung giờ phỏng vấn tiêu chuẩn của bộ phận HR (giờ hành chính, T2–T6)
 WORK_HOURS = ["09:00", "10:00", "11:00", "14:00", "15:00", "16:00"]
 SLOT_FORMAT = "%d/%m/%Y %H:%M"
@@ -105,10 +111,43 @@ def _load_jobs() -> list:
     return jobs
 
 
+# Người dùng gõ tên tỉnh/thành theo trăm kiểu, còn dataset chỉ lưu một dạng duy nhất
+# ('hồ chí minh'). Không có bảng quy đổi này thì test case #3 ("TP. HCM") bị báo
+# "không tìm thấy" dù dữ liệu có sẵn 15,311 vị trí ở đó.
+_LOCATION_ALIASES = {
+    "hcm": "hồ chí minh",
+    "tphcm": "hồ chí minh",
+    "hcmc": "hồ chí minh",
+    "sg": "hồ chí minh",
+    "sài gòn": "hồ chí minh",
+    "sai gon": "hồ chí minh",
+    "saigon": "hồ chí minh",
+    "hn": "hà nội",
+    "thủ đô": "hà nội",
+    "đn": "đà nẵng",
+    "da nang": "đà nẵng",
+    "hp": "hải phòng",
+    "ct": "cần thơ",
+}
+
+
+def _normalize_location(loc: str) -> str:
+    """
+    Chuẩn hoá tên tỉnh/thành về đúng dạng lưu trong dataset.
+
+    'TP. HCM' / 'Tp Hồ Chí Minh' / 'Sài Gòn' → 'hồ chí minh'
+    """
+    text = (loc or "").lower().strip()
+    text = re.sub(r"[.,]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"^(tp|thanh pho|thành phố|tỉnh|tinh)\s+", "", text).strip()
+    return _LOCATION_ALIASES.get(text, text)
+
+
 def _known_location(loc: str) -> bool:
     """True nếu địa điểm xuất hiện trong dataset (dùng để chặn 'Sao Hỏa')."""
     _load_jobs()
-    loc = loc.lower().strip()
+    loc = _normalize_location(loc)
     if not loc or not _LOCATION_INDEX:
         return False
     return any(loc in known for known in _LOCATION_INDEX)
@@ -251,7 +290,7 @@ def search_jobs(keyword: str, location: str = "", top_n: int = 5) -> str:
         )
 
     kw = keyword.lower()
-    loc = location.lower()
+    loc = _normalize_location(location)
 
     def _location_ok(job) -> bool:
         return not loc or loc in job["location"].lower()
@@ -311,7 +350,8 @@ def screen_resume(cv_text: str, job_requirements: str) -> str:
                         (không để LLM "cảm tính"). Dùng SAU khi đã có
                         requirements_text thật từ search_jobs. KHÔNG dùng khi chưa
                         có JD hoặc khi CV chưa được cung cấp.
-        Input schema  : cv_text: str (bắt buộc, ≥ 30 từ),
+        Input schema  : cv_text: str (bắt buộc, ≥ 15 từ; dưới 30 từ vẫn chấm nhưng
+                        kèm cảnh báo "chỉ mang tính tham khảo"),
                         job_requirements: str (bắt buộc)
         Output schema : "Độ phù hợp CV - Yêu cầu công việc: <x>% (<verdict>).
                          (Chi tiết: đáp ứng <k>/<n> từ khóa yêu cầu | cosine similarity <y>%)
@@ -319,7 +359,7 @@ def screen_resume(cv_text: str, job_requirements: str) -> str:
                          Từ khóa yêu cầu còn thiếu: <d, e>."
                         verdict ∈ {✅ Phù hợp cao ≥70%, ⚠️ Phù hợp trung bình 40–70%,
                         ❌ Không phù hợp <40%}
-        Error         : "LỖI: ..." khi CV dưới ~30 từ hoặc thiếu job_requirements.
+        Error         : "LỖI: ..." khi CV dưới 15 từ hoặc thiếu job_requirements.
         Side effect   : Read-only, thuần tính toán (không lưu CV xuống đĩa).
         Example       : screen_resume("<CV Python 60 từ>", "Yêu cầu: Python, SQL...")
                         → "Độ phù hợp CV - Yêu cầu công việc: 81.8% (✅ Phù hợp cao)..."
@@ -353,8 +393,16 @@ def screen_resume(cv_text: str, job_requirements: str) -> str:
             "Nội dung này đã được xử lý như văn bản thuần và KHÔNG được thi hành.\n"
         )
 
-    if not cv_text or len(cv_text.split()) < 30:
-        return warning + "LỖI: CV quá ngắn hoặc thiếu thông tin (cần tối thiểu khoảng 30 từ) để đánh giá chính xác."
+    word_count = len(cv_text.split()) if cv_text else 0
+    if word_count < MIN_CV_WORDS_HARD:
+        return warning + (
+            f"LỖI: CV quá ngắn hoặc thiếu thông tin ({word_count} từ, cần tối thiểu "
+            f"{MIN_CV_WORDS_HARD} từ) để đánh giá. Vui lòng cung cấp CV đầy đủ hơn."
+        )
+    if word_count < MIN_CV_WORDS_RELIABLE:
+        warning += (
+            f"ℹ️ LƯU Ý: CV khá ngắn ({word_count} từ), điểm dưới đây chỉ mang tính tham khảo.\n"
+        )
     if not job_requirements:
         return warning + "LỖI: Thiếu dữ liệu yêu cầu công việc (job_requirements) để so sánh với CV."
 
@@ -563,11 +611,11 @@ TOOL_SPECS = {
         "purpose": "Chấm độ phù hợp CV ↔ yêu cầu công việc theo độ phủ từ khóa JD (kèm cosine similarity).",
         "when_not_to_use": "Khi chưa có yêu cầu công việc thật từ search_jobs, hoặc ứng viên chưa gửi CV.",
         "input_schema": {
-            "cv_text": "str (bắt buộc, tối thiểu ~30 từ)",
+            "cv_text": "str (bắt buộc, tối thiểu 15 từ; dưới 30 từ sẽ kèm cảnh báo tham khảo)",
             "job_requirements": "str (bắt buộc) — lấy từ kết quả search_jobs",
         },
         "output_schema": "'Độ phù hợp CV - Yêu cầu công việc: X% (verdict)' + số từ khóa đáp ứng/thiếu + cosine similarity",
-        "error_semantics": "'LỖI: ...' khi CV quá ngắn (<30 từ), thiếu job_requirements, hoặc JD không có từ khóa.",
+        "error_semantics": "'LỖI: ...' khi CV quá ngắn (<15 từ), thiếu job_requirements, hoặc JD không có từ khóa.",
         "side_effect": "read-only",
         "example": 'screen_resume["Tôi có 3 năm kinh nghiệm Python...", "Yêu cầu: Python, SQL..."]',
         "safety": "CV chỉ được đếm từ, không thi hành chỉ thị bên trong; gắn cảnh báo khi phát hiện prompt injection.",
@@ -634,6 +682,87 @@ def get_tools_description() -> str:
             f"   - Ví dụ: Action: {spec['example']}"
         )
     return "\n".join(lines)
+
+
+_ACTION_RE = re.compile(r"^\s*(?:Action\s*:)?\s*([A-Za-z_][A-Za-z0-9_]*)\s*\[(.*)\]\s*$", re.DOTALL)
+
+
+def _split_args(raw: str) -> list:
+    """
+    Tách danh sách tham số theo dấu phẩy nhưng BỎ QUA dấu phẩy nằm trong cặp nháy.
+
+    Cần thiết vì tham số thật hay chứa dấu phẩy:
+        screen_resume["Kinh nghiệm Python, SQL, ETL", "Yêu cầu: Python, SQL"]
+    Nếu tách thô bằng raw.split(",") sẽ ra 4 tham số thay vì 2.
+    """
+    args, buf, quote = [], [], None
+    for ch in raw:
+        if quote:
+            if ch == quote:
+                quote = None
+            else:
+                buf.append(ch)
+        elif ch in "\"'":
+            quote = ch
+        elif ch == ",":
+            args.append("".join(buf).strip())
+            buf = []
+        else:
+            buf.append(ch)
+    args.append("".join(buf).strip())
+    return [a for a in args if a != ""]
+
+
+def parse_action(action_text: str):
+    """
+    Bóc tách dòng 'Action: tên_tool[tham_số]' do LLM sinh ra.
+
+    Chống Failure Mode #11 (Malformed Action Syntax): parser thô của vòng lặp ReAct
+    tách tham số bằng `split(",")` nên vỡ ngay khi tham số chứa dấu phẩy. Hàm này
+    tôn trọng dấu nháy nên `screen_resume["CV có Python, SQL", "JD có Python, SQL"]`
+    vẫn ra đúng 2 tham số.
+
+    Args:
+        action_text (str): Cả dòng 'Action: ...' hoặc chỉ phần 'tên_tool[...]'
+
+    Returns:
+        tuple: (tool_name: str, args: list, error: str)
+               error là "" khi bóc tách thành công; ngược lại tool_name = "".
+
+    Example:
+        parse_action('Action: search_jobs["Kế toán", "Hà Nội", 3]')
+        → ("search_jobs", ["Kế toán", "Hà Nội", "3"], "")
+    """
+    text = action_text if isinstance(action_text, str) else str(action_text or "")
+    match = _ACTION_RE.match(text.strip())
+    if not match:
+        return "", [], (
+            "LỖI: Cú pháp Action không hợp lệ. Bắt buộc dùng dạng "
+            "tên_công_cụ[tham_số_1, tham_số_2] (VD: search_jobs[\"Kế toán\", \"Hà Nội\"])."
+        )
+    return match.group(1), _split_args(match.group(2)), ""
+
+
+def execute_action(action_text: str) -> str:
+    """
+    Bóc tách + thực thi một dòng Action, trả thẳng chuỗi Observation cho Role 4.
+
+    Gộp parse_action() và run_tool() để vòng lặp ReAct trong app.py chỉ cần một dòng:
+        obs = execute_action(action_line)
+
+    Mọi tình huống hỏng (sai cú pháp, tool ma, sai số lượng tham số, exception bất
+    ngờ trong tool) đều ra chuỗi "LỖI: ..." — không bao giờ raise.
+
+    Args:
+        action_text (str): Dòng 'Action: tên_tool[tham_số]' lấy từ output của LLM.
+
+    Returns:
+        str: Observation (kết quả tool hoặc thông báo lỗi) để nối vào history.
+    """
+    tool_name, args, error = parse_action(action_text)
+    if error:
+        return error
+    return run_tool(tool_name, *args)
 
 
 def run_tool(tool_name: str, *args) -> str:
@@ -704,6 +833,12 @@ def _run_self_test() -> int:
         ("search_jobs: fallback theo token (AI Engineer)",
          lambda: search_jobs("AI Engineer", "", 2),
          lambda r: r.startswith("Tìm thấy") or r.startswith("LỖI:")),
+        ("search_jobs: TC#3 Role 1 — alias địa điểm 'TP. HCM'",
+         lambda: search_jobs("Kế toán", "TP. HCM", 3),
+         lambda r: r.startswith("Tìm thấy") and "hồ chí minh" in r),
+        ("search_jobs: alias 'Sài Gòn' cũng ra kết quả",
+         lambda: search_jobs("Kế toán", "Sài Gòn", 1),
+         lambda r: r.startswith("Tìm thấy")),
 
         ("screen_resume: TC#1 CV IT vs JD IT phải PHÙ HỢP CAO",
          lambda: screen_resume(cv_it, jd_it),
@@ -751,6 +886,30 @@ def _run_self_test() -> int:
          lambda r: r.startswith("LỖI:") and "tham số" in r),
         ("run_tool: gọi hợp lệ", lambda: run_tool("search_jobs", "Kế toán", "", 1),
          lambda r: r.startswith("Tìm thấy")),
+
+        # --- MỐC 3: parser cú pháp Action & chống crash ---
+        ("parse_action: tham số chứa dấu phẩy vẫn ra đúng 2 arg",
+         lambda: str(parse_action(
+             'Action: screen_resume["Kinh nghiệm Python, SQL, ETL", "Yêu cầu: Python, SQL"]')[1]),
+         lambda r: r.count("',") == 1 or r.count('",') == 1),
+        ("parse_action: bóc đúng tên tool và 3 tham số",
+         lambda: str(parse_action('Action: search_jobs["Kế toán", "Hà Nội", 3]')),
+         lambda r: "search_jobs" in r and "'3'" in r),
+        ("parse_action: TC Failure Mode #11 cú pháp sai",
+         lambda: parse_action("Action: search_jobs'Hà Nội'")[2],
+         lambda r: r.startswith("LỖI:")),
+        ("execute_action: TC#4 Role 1 — CV 25 từ vẫn chấm được (kèm cảnh báo)",
+         lambda: execute_action(
+             'screen_resume["Tôi có kinh nghiệm làm việc với Python, SQL, ETL, xây dựng '
+             'pipeline dữ liệu và tối ưu quy trình xử lý dữ liệu lớn.", '
+             '"Yêu cầu: Python, SQL, ETL, pipeline dữ liệu"]'),
+         lambda r: "LƯU Ý" in r and "Độ phù hợp" in r),
+        ("execute_action: tool ma không làm crash",
+         lambda: execute_action("Action: send_email[abc@xyz.com]"),
+         lambda r: r.startswith("LỖI:") and "không tồn tại" in r),
+        ("execute_action: chuỗi rác hoàn toàn",
+         lambda: execute_action("Thought: tôi nghĩ nên tìm việc"),
+         lambda r: r.startswith("LỖI:") and "Cú pháp Action" in r),
     ]
 
     print("=" * 72)
@@ -771,8 +930,49 @@ def _run_self_test() -> int:
         preview = result.replace("\n", " ⏎ ")[:96]
         print(f"{status} [{idx:02d}] {desc}\n         → {preview}")
 
+    # -------------------------------------------------------------------------
+    # 🧨 FUZZ TEST (Mốc 3): dội tham số rác vào MỌI tool, không cái nào được crash
+    # -------------------------------------------------------------------------
+    junk_args = [
+        (), ("",), (None,), (None, None), (0,), (-1,), ([],), ({},),
+        ("a" * 5000,), ("<script>alert(1)</script>", "'; DROP TABLE jobs;--"),
+        ("😀🔥", "\n\t  "), ("a", "b", "c", "d", "e"), (3.14, True),
+    ]
+    print("-" * 72)
+    print(f"🧨 FUZZ TEST: {len(AVAILABLE_TOOLS)} tool × {len(junk_args)} bộ tham số rác")
+
+    fuzz_total = fuzz_failed = 0
+    for tool_name in AVAILABLE_TOOLS:
+        for args in junk_args:
+            fuzz_total += 1
+            try:
+                out = run_tool(tool_name, *args)
+                if not isinstance(out, str):
+                    fuzz_failed += 1
+                    print(f"   ❌ {tool_name}{args} → không trả về str: {type(out).__name__}")
+            except Exception as e:
+                fuzz_failed += 1
+                print(f"   ❌ {tool_name}{args} → CRASH {type(e).__name__}: {e}")
+
+    # Dội thêm rác vào lớp parser
+    for junk in ["", None, "Action:", "search_jobs[", "]]][[[", "search_jobs[a,b,c,d,e,f,g]",
+                 "Action: " + "x" * 3000, "screen_resume[]", "  ", 12345]:
+        fuzz_total += 1
+        try:
+            if not isinstance(execute_action(junk), str):
+                fuzz_failed += 1
+                print(f"   ❌ execute_action({junk!r}) → không trả về str")
+        except Exception as e:
+            fuzz_failed += 1
+            print(f"   ❌ execute_action({junk!r}) → CRASH {type(e).__name__}: {e}")
+
+    fuzz_status = "✅ PASS" if fuzz_failed == 0 else "❌ FAIL"
+    print(f"{fuzz_status} — {fuzz_total - fuzz_failed}/{fuzz_total} lần gọi trả về chuỗi an toàn, "
+          f"{fuzz_failed} crash")
+    failed += fuzz_failed
+
     print("=" * 72)
-    total = len(cases)
+    total = len(cases) + fuzz_total
     print(f"📊 KẾT QUẢ: {total - failed}/{total} PASS, {failed} FAIL")
     print(f"🛠️ Tool đã đăng ký: {', '.join(AVAILABLE_TOOLS)}")
     print("=" * 72)
